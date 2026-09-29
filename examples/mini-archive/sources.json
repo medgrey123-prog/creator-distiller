@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "requested": "提供的 3 条虚构测试材料",
+    "status": "complete",
+    "observed_at": "2026-09-30T00:00:00+08:00",
+    "evidence": "清单包含 sample_001 到 sample_003，共 3 条；仅代表样例范围"
+  },
+  "sources": [
+    {
+      "source_id": "sample_001",
+      "title": "虚构样例 1",
+      "kind": "text",
+      "url": "",
+      "published_at": "",
+      "status": "complete",
+      "text_origin": "provided_text",
+      "text_path": "raw/sample_001.txt"
+    },
+    {
+      "source_id": "sample_002",
+      "title": "虚构样例 2",
+      "kind": "text",
+      "url": "",
+      "published_at": "",
+      "status": "complete",
+      "text_origin": "provided_text",
+      "text_path": "raw/sample_002.txt"
+    },
+    {
+      "source_id": "sample_003",
+      "title": "虚构样例 3",
+      "kind": "text",
+      "url": "",
+      "published_at": "",
+      "status": "complete",
+      "text_origin": "provided_text",
+      "text_path": "raw/sample_003.txt"
+    }
+  ]
+}
