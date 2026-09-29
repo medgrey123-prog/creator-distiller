@@ -1,5 +1,7 @@
 # 蒸馏大王 · Creator Distiller
 
+[![Offline tests](https://github.com/medgrey123-prog/creator-distiller/actions/workflows/test.yml/badge.svg)](https://github.com/medgrey123-prog/creator-distiller/actions/workflows/test.yml)
+
 把创作者的多篇内容，变成有来源、可核查、可应用的 **概念体系 + 方法论地图 + 表达 DNA**。
 
 核心流程：明确范围 → 保存原始证据 → 逐条总结 → 跨篇归纳 → 回查原文 → 交付三件套。进一步用于实际工作时，结合用户信息和真实数据反馈；不冒充原作者。
@@ -53,12 +55,12 @@ python creator-distiller/scripts/archive.py validate demo-work --stage distilled
 
 - 引用存在、文本完整、结论受到支持是三种不同检查。
 - 包含离线行为测试，执行 `python -m unittest discover -s tests -v`。
-- 已配置 GitHub Actions 在 Windows、macOS、Linux 上测试 Python 3.9 和 3.13。**配置存在不代表远端测试已通过**；本次本地结果见 [审查记录](REVIEW.md)。
+- GitHub Actions 的 Windows、macOS、Linux × Python 3.9/3.13 共 6 个任务已通过：[首次跨系统验证](https://github.com/medgrey123-prog/creator-distiller/actions/runs/36604645463)。这些测试验证离线工具，不代表所有 Agent 或在线采集能力已实测；详细范围见 [审查记录](REVIEW.md)。
 - OpenAI 可选 UI 元数据放 `agents/openai.yaml`；其他 Agent 可忽略。没有把自定义 manifest 或关键词阈值当成所有宿主都会执行的配置。
 - [行为评估用例](evals/behavior_cases.json) 是人工/Agent 回归用例，不是已通过的跨 Agent 实测结果。
 
 ## 公开发布与许可
 
-本地发布草稿采用 MIT：允许使用、修改、分发和商业使用，并要求保留许可与版权声明。许可只适用于本仓库自有代码、说明、模板和虚构样例，不授权分发第三方原文、音视频或凭据。请把真实归档保存在仓库外；`.gitignore` 仅防常见误提交，不能替代检查暂存区。
+本项目采用 MIT：允许使用、修改、分发和商业使用，并要求保留许可与版权声明。许可只适用于本仓库自有代码、说明、模板和虚构样例，不授权分发第三方原文、音视频或凭据。请把真实归档保存在仓库外；`.gitignore` 仅防常见误提交，不能替代检查暂存区。
 
 依据：[Agent Skills 格式规范](https://agentskills.io/specification)、[GitHub 仓库许可说明](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)。原 1.x 包中的私有路径、非通用工具依赖和个人案例已去除；迁移与改动见 [REVIEW.md](REVIEW.md)。

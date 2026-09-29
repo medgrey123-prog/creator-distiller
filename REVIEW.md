@@ -1,6 +1,6 @@
 # 公开发布审查与修改记录
 
-审查日期：2026-09-30。对象：用户提供的 `蒸馏大王-creator-distiller.zip`，版本 1.0.0。本目录为单独整理的 2.0.0 发布草稿，原包保留，未上传 GitHub。
+审查日期：2026-09-30。对象：用户提供的 `蒸馏大王-creator-distiller.zip`，版本 1.0.0。本目录为单独整理的 2.0.0 版本，原包保留。发布更新：已上传公开 GitHub 仓库，并完成下述跨系统验证。
 
 ## 核心逻辑判断
 
@@ -27,7 +27,7 @@
 | 关键词阈值无附带运行器 | 配置看起来可评测，实际无法复现评分 | 换成清晰的行为回归用例，明确尚未跨 Agent 实测 |
 | 无开源许可证与公开安装说明 | 公开可见不等于授予普遍使用/修改/分发权 | 发布草稿选择 MIT，添加 README 与通用安装方法 |
 
-MIT 是为用户希望广泛使用这一目标选择的本地可审查默认，尚未对外发布；版权署名沿用原 manifest 的 owner。授权范围为自有文件，不包含第三方创作者材料。说明依据：[GitHub Licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)。
+MIT 是为用户希望广泛使用这一目标选择并随本版发布的许可；版权署名沿用原 manifest 的 owner。现已按用户明确授权公开发布。授权范围为自有文件，不包含第三方创作者材料。说明依据：[GitHub Licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)。
 
 ## 案例取舍
 
@@ -40,7 +40,7 @@ MIT 是为用户希望广泛使用这一目标选择的本地可审查默认，�
 - 本机 macOS，Python 3.9.6：19 项离线行为测试通过，覆盖完整文件链路、缺源/漏条、同数量错文件、旧总结、虚构引用、中文空格路径、Windows 保留 ID、路径越界、只读原始材料等。
 - Skill Creator 的 `quick_validate.py`：通过。其允许字段比当前格式规范更窄，因此环境要求放到正文，兼容两者。
 - 包内 Markdown 链接、JSON、源码编译、安装目录名称、公开文件筛查与 ZIP 内容在最终打包时复核。
-- GitHub Actions 配置了 Windows/macOS/Linux × Python 3.9/3.13；本次没有远端运行，不声称这 6 个环境已经通过。
+- GitHub Actions 的 Windows/macOS/Linux × Python 3.9/3.13 共 6 个任务全部通过，验证提交 `88e35ae`：[运行证据](https://github.com/medgrey123-prog/creator-distiller/actions/runs/36604645463)。仅覆盖离线辅助工具；Agent 行为评估与在线采集另计。
 - 不提供所有 Agent 的自动安装器；不同宿主的权限、加载机制与上下文大小仍会影响效果。普通文本 Agent 可以读取同一套方法，但不拥有文件与执行能力时不能运行脚本。
 - 未实测在线抖音抓取、下载、ASR 或 PDF；本包明确不捆绑这些引擎。旧包的历史抓取成绩不转移为本版验收证据。
 - 12 条行为评估用例已经整理，未把它们标为跨 Agent 行为测试通过。
@@ -50,6 +50,6 @@ MIT 是为用户希望广泛使用这一目标选择的本地可审查默认，�
 
 将本目录的内容作为 GitHub 仓库根目录，保留 LICENSE、README、tests、.github 和完整的 creator-distiller 文件夹。独立安装包只需分发 creator-distiller 文件夹（内部也包含 LICENSE）。
 
-无需为本次整理创建或公开远程仓库。得到具体目标仓库和发布授权后再上传；上传后以真实 CI 结果补充兼容性状态，不能预先添加“全平台通过”的徽章。
+已根据用户明确授权发布到 `medgrey123-prog/creator-distiller`，仓库为公开。README 徽章显示真实 CI 状态；Release 安装附件对应发布提交，并附 SHA-256 校验值。
 
 格式依据：[Agent Skills specification](https://agentskills.io/specification)。核心只使用 name、description、license 和 metadata；其他产品不依赖 OpenAI UI 文件即可阅读执行。
