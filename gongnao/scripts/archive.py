@@ -20,6 +20,11 @@ def fail(message):
     raise ValueError(message)
 
 
+def portable_name(part):
+    return (part.split('.')[0].upper() not in RESERVED and not part.endswith(('.', ' '))
+            and not any(c in part for c in '<>\"|?*'))
+
+
 def within(base, relative):
     if not isinstance(relative, str) or not relative or '\\' in relative:
         fail('Paths must be nonempty POSIX-style relative paths')
@@ -28,6 +33,8 @@ def within(base, relative):
         fail('Unsafe archive path: '+relative)
     if any(':' in part for part in p.parts):
         fail('Colon is not allowed in archive paths: '+relative)
+    if not all(portable_name(part) for part in p.parts):
+        fail('Windows reserved or trailing-dot/space name in archive path: '+relative)
     result = (base / p).resolve()
     try:
         result.relative_to(base.resolve())
@@ -37,7 +44,10 @@ def within(base, relative):
 
 
 def read(path):
-    return path.read_text(encoding='utf-8-sig')
+    try:
+        return path.read_text(encoding='utf-8-sig')
+    except UnicodeDecodeError:
+        fail('Not UTF-8 text: '+str(path)+' (convert it to UTF-8, e.g. from GBK, then rerun)')
 
 
 def write(base, name, body):
@@ -55,7 +65,10 @@ def dump(base, name, data):
 
 
 def load(base):
-    data = json.loads(read(within(base, 'sources.json')))
+    return validate_data(base, json.loads(read(within(base, 'sources.json'))))
+
+
+def validate_data(base, data):
     if not isinstance(data, dict) or data.get('schema_version') != 1:
         fail('sources.json requires schema_version: 1')
     scope = data.get('scope')
@@ -86,10 +99,14 @@ def load(base):
         if s['status'] == 'complete' and (s['text_origin'] in ('unavailable', 'page_excerpt') or (s['kind'] in ('audio','video') and s['text_origin'] not in ('asr','manual_transcript'))):
             fail(sid+': complete requires full source text, and audio/video requires a transcript')
         for field in ('title', 'url', 'published_at'):
-            if not isinstance(s.get(field, ''), str):
+            if s.get(field) is None:
+                s[field] = ''
+            if not isinstance(s[field], str):
                 fail(sid+': '+field+' must be a string')
         if s.get('url') and urlparse(s['url']).scheme not in ('http','https'):
             fail(sid+': source URL must use HTTP(S), or be empty for local material')
+        if s.get('duration_seconds') is None:
+            s.pop('duration_seconds', None)
         duration = s.get('duration_seconds', 0)
         if isinstance(duration, bool) or not isinstance(duration, (float,int)) or not math.isfinite(duration) or duration < 0:
             fail(sid+': duration_seconds must be a finite nonnegative number')
@@ -129,20 +146,33 @@ def markdown_files(base, directory):
     return {f.stem for f in p.glob('*.md') if not f.name.startswith('._')}
 
 
+def readable(s):
+    return s['status'] != 'missing'
+
+
 def check(base, data, stage):
-    issues = []
+    """Return (issues, gaps). Issues break the chain; gaps are declared missing/partial sources."""
+    issues, gaps = [], []
     expected = {s['source_id'] for s in data['sources']}
-    dirs = ['bundles'] if stage == 'bundles' else ['bundles', 'summaries']
-    for directory in dirs:
+    wanted = {'bundles': expected}
+    if stage != 'bundles':
+        # A declared-missing source has nothing to summarize; it stays a reported gap.
+        wanted['summaries'] = {s['source_id'] for s in data['sources'] if readable(s)}
+    for directory, ids in wanted.items():
         actual = markdown_files(base, directory)
-        for sid in sorted(expected-actual):
+        for sid in sorted(ids-actual):
             issues.append(directory+': missing '+sid)
         for sid in sorted(actual-expected):
             issues.append(directory+': unexpected '+sid)
     for s in data['sources']:
         sid = s['source_id']
-        if s['status'] != 'complete' or not content(base,s).strip():
-            issues.append(sid+': source incomplete or empty')
+        text = content(base, s).strip()
+        if s['status'] == 'missing':
+            gaps.append(sid+': declared missing; excluded from analysis, keep it in the coverage report')
+        elif not text:
+            issues.append(sid+': status is '+s['status']+' but raw text is empty or absent')
+        elif s['status'] == 'partial':
+            gaps.append(sid+': text is partial; conclusions from it cover only the available part')
         body, digest = bundle_body(base,s)
         bp = within(base, 'bundles/'+sid+'.md')
         if bp.is_file() and read(bp) != body:
@@ -154,19 +184,19 @@ def check(base, data, stage):
                 if STAMP.findall(summary) != [digest]:
                     issues.append(sid+': summary input fingerprint missing or stale')
                 if sid not in REF.findall(summary):
-                    issues.append(sid+': summary missing its source citation')
+                    issues.append(sid+': summary must cite itself as [source:'+sid+']')
                 remainder = REF.sub('', STAMP.sub('',summary)).strip(' \n\r\t#-*')
                 if not remainder:
                     issues.append(sid+': summary has no content')
                 issues.extend(check_refs(summary, expected, 'summaries/'+sid))
-    if stage == 'distilled':
+    if stage == 'insights':
         for name in OUTPUTS:
-            p = within(base, 'distilled/'+name)
+            p = within(base, 'insights/'+name)
             if not p.is_file() or not read(p).strip():
-                issues.append('distilled: missing or empty '+name)
+                issues.append('insights: missing or empty '+name)
             else:
                 issues.extend(check_refs(read(p), expected, name, require=True))
-    return issues
+    return issues, gaps
 
 
 def check_refs(body, ids, label, require=False):
@@ -176,7 +206,7 @@ def check_refs(body, ids, label, require=False):
         issues.append(label+': no source citations')
     # Explicit prefix with invalid IDs or missing ] must not silently evade validation.
     if body.count('[source:') != len(refs):
-        issues.append(label+': malformed source citation')
+        issues.append(label+': malformed source citation; write exactly [source:ID] and put the locator outside, e.g. [source:ID] 第2段')
     for sid in sorted(set(refs)-ids):
         issues.append(label+': unknown citation '+sid)
     return issues
@@ -189,33 +219,76 @@ def positive(value):
     return number
 
 
+def init(base):
+    """Create a starter sources.json from raw/*.txt|*.md. Never overwrites."""
+    if (base/'sources.json').exists() or (base/'sources.json').is_symlink():
+        fail('sources.json already exists; init never overwrites it')
+    raw = base/'raw'
+    files = sorted(p for p in raw.rglob('*') if p.is_file() and p.suffix.lower() in ('.txt', '.md', '.markdown') and not any(part.startswith('.') for part in p.relative_to(raw).parts)) if raw.is_dir() else []
+    if not files:
+        fail('Put UTF-8 .txt/.md source files under '+str(raw)+' first')
+    sources, seen, not_utf8 = [], set(), []
+    for n, f in enumerate(files, 1):
+        stem = re.sub(r'[^A-Za-z0-9_-]+', '_', f.stem).strip('_-')[:96]
+        sid = stem if stem and ID.fullmatch(stem) and stem.upper() not in RESERVED and stem.casefold() not in seen else 'src_%03d' % n
+        suffix = n
+        while sid.casefold() in seen:
+            suffix += 1
+            sid = 'src_%03d' % suffix
+        seen.add(sid.casefold())
+        within(base, f.relative_to(base).as_posix())
+        try:
+            f.read_text(encoding='utf-8-sig')
+        except UnicodeDecodeError:
+            not_utf8.append(f.relative_to(base).as_posix())
+        sources.append({'source_id': sid, 'title': f.stem, 'kind': 'text', 'url': '', 'published_at': '',
+                        'status': 'complete', 'text_origin': 'provided_text', 'text_path': f.relative_to(base).as_posix()})
+    data = {'schema_version': 1, 'scope': {'requested': 'raw/ 下的 %d 个本地文件' % len(sources), 'status': 'unknown',
+            'observed_at': 'unknown', 'evidence': '由 archive.py init 按 raw/ 文件自动生成；范围、类型、来源与时间须由 Agent/用户核对'},
+            'sources': sources}
+    validate_data(base, data)
+    dump(base, 'sources.json', data)
+    print('sources.json written:', len(sources), 'sources; review scope, kind, text_origin, title and url before bundling')
+    for path in not_utf8:
+        print('WARN: not UTF-8, convert before bundling:', path)
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='command', required=True)
-    for command in ('bundle','split','shard','index','validate'):
+    for command in ('init','bundle','split','shard','index','validate'):
         q = sub.add_parser(command)
-        q.add_argument('archive', type=Path)
+        q.add_argument('archive', type=Path, help='archive directory; an absolute path is safest')
         if command in ('split','shard'):
             q.add_argument('--groups', type=positive, default=3)
         if command == 'validate':
-            q.add_argument('--stage', choices=('bundles','summaries','distilled'), default='distilled')
+            q.add_argument('--stage', choices=('bundles','summaries','insights'), default='insights')
+        if command in ('bundle','split','index','validate'):
+            q.add_argument('--strict', action='store_true', help='require complete declared scope and no missing/partial sources')
     args = p.parse_args(argv)
     base = args.archive.resolve()
+    if args.command == 'init':
+        return init(base)
     data = load(base)
     items = data['sources']
     if args.command == 'bundle':
         for s in items:
             write(base,'bundles/'+s['source_id']+'.md',bundle_body(base,s)[0])
-        issues = check(base,data,'bundles')
+        issues, gaps = check(base,data,'bundles')
         print('Bundles written:',len(items))
     elif args.command == 'split':
-        issues = check(base,data,'bundles')
-        if not issues:
-            groups = [[] for _ in range(min(args.groups,len(items))) ]
-            for i,s in enumerate(items):
-                groups[i % len(groups)].append('bundles/'+s['source_id']+'.md')
-            dump(base,'groups.json',groups)
-            print('COVERAGE OK:',len(items),'sources;',len(groups),'groups')
+        issues, gaps = check(base,data,'bundles')
+        if not issues and not (args.strict and (gaps or data['scope']['status'] != 'complete')):
+            usable = [s for s in items if readable(s)]
+            if not usable:
+                issues.append('no source has text to analyze')
+            else:
+                groups = [[] for _ in range(min(args.groups,len(usable)))]
+                for i,s in enumerate(usable):
+                    groups[i % len(groups)].append('bundles/'+s['source_id']+'.md')
+                dump(base,'groups.json',groups)
+                print('COVERAGE OK:',len(usable),'sources;',len(groups),'groups')
     elif args.command == 'shard':
         media = [s for s in items if s['kind'] in ('audio','video')]
         groups = [[] for _ in range(min(args.groups,len(media)))]
@@ -240,17 +313,30 @@ def main(argv=None):
                 merged.extend(['## '+sid,'',read(summary),''])
         write(base,'00_index.md','\n'.join(rows)+'\n')
         write(base,'all_summaries.md','\n'.join(merged)+'\n')
-        issues = check(base,data,'summaries')
+        issues, gaps = check(base,data,'summaries')
         print('Index and collection written; validation follows.')
     else:
-        issues = check(base,data,args.stage)
+        issues, gaps = check(base,data,args.stage)
+    for gap in gaps:
+        print('GAP:', gap)
+    if args.strict:
+        issues = issues + ['strict mode: '+g for g in gaps]
+        if data['scope']['status'] != 'complete':
+            issues.append('strict mode: scope.status must be complete (current: '+data['scope']['status']+')')
     for issue in issues:
         print('FAIL:',issue)
-    print('STRUCTURE '+('FAIL' if issues else 'PASS')+'; scope='+data['scope']['status']+'; semantic evidence review is separate')
+    usable = sum(1 for s in items if readable(s) and content(base, s).strip())
+    verdict = 'FAIL' if issues else ('PASS WITH GAPS' if gaps else 'PASS')
+    print('STRUCTURE '+verdict+'; sources with text='+str(usable)+'/'+str(len(items))+'; scope='+data['scope']['status']+'; semantic evidence review is separate')
     return 2 if issues else 0
 
 
 if __name__ == '__main__':
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors='replace')
+        except (AttributeError, ValueError):
+            pass
     try:
         sys.exit(main())
     except (ValueError, OSError, TypeError, KeyError) as error:

@@ -1,4 +1,0 @@
-interface:
-  display_name: "蒸馏大王 · Creator Distiller"
-  short_description: "将创作者内容提炼为可追溯的概念、方法论与表达结构，并保留证据和冲突"
-  default_prompt: "Use $creator-distiller to distill this creator's content into traceable concepts, methods, and expression patterns."

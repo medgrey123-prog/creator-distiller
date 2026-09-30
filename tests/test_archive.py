@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / 'creator-distiller/scripts/archive.py'
+SCRIPT = ROOT / 'gongnao/scripts/archive.py'
 spec = importlib.util.spec_from_file_location('archive', SCRIPT)
 a = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(a)
@@ -34,13 +34,13 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(self.run_command('bundle'),0)
         data=a.load(self.base)
         (self.base/'summaries').mkdir()
-        (self.base/'distilled').mkdir()
+        (self.base/'insights').mkdir()
         for s in data['sources']:
             sid=s['source_id'];_,digest=a.bundle_body(self.base,s)
             text='<!-- bundle-sha256: '+digest+' -->\n\n测试总结：此处只验证文件链路，不评价观点正确性。[source:'+sid+'] 第 1 段。\n'
             (self.base/'summaries'/f'{sid}.md').write_text(text,encoding='utf-8')
         for name in a.OUTPUTS:
-            (self.base/'distilled'/name).write_text('测试产物 [source:sample_001] 第 1 段。',encoding='utf-8')
+            (self.base/'insights'/name).write_text('测试产物 [source:sample_001] 第 1 段。',encoding='utf-8')
 
     def test_end_to_end_local_chain(self):
         self.prepare()
@@ -78,7 +78,7 @@ class ArchiveTests(unittest.TestCase):
 
     def test_bad_citations_fail(self):
         self.prepare()
-        path=self.base/'distilled/01_concepts.md'
+        path=self.base/'insights/01_concepts.md'
         for text in ('未知 [source:not_in_manifest]','坏格式 [source:../../escape]','未闭合 [source:sample_001','没有引用'):
             with self.subTest(text=text):
                 path.write_text(text,encoding='utf-8')
@@ -91,12 +91,82 @@ class ArchiveTests(unittest.TestCase):
         (self.base/'summaries/sample_001.md').write_text('<!-- bundle-sha256: '+digest+' -->\n[source:sample_001]',encoding='utf-8')
         self.assertEqual(self.run_command('validate'),2)
 
-    def test_partial_cannot_pass_complete_material_check(self):
+    def run_output(self, *args):
+        out=io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code=a.main([args[0],str(self.base),*args[1:]])
+        return code,out.getvalue()
+
+    def test_partial_is_reported_gap_and_strict_fails(self):
         self.prepare()
         data=a.load(self.base)
         data['sources'][0]['status']='partial'
         self.save(data)
-        self.assertEqual(self.run_command('bundle'),2)
+        code,out=self.run_output('bundle')
+        self.assertEqual(code,0)
+        self.assertIn('GAP: sample_001',out)
+        self.assertIn('PASS WITH GAPS',out)
+        self.assertEqual(self.run_command('bundle','--strict'),2)
+
+    def test_declared_missing_source_does_not_block_others(self):
+        data=a.load(self.base)
+        s=data['sources'][2];s.update(status='missing',text_origin='unavailable');s.pop('text_path')
+        self.save(data);(self.base/'raw/sample_003.txt').unlink()
+        self.assertEqual(self.run_command('bundle'),0)
+        self.assertEqual(self.run_command('split','--groups','2'),0)
+        groups=json.loads((self.base/'groups.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(sum(groups,[])),['bundles/sample_001.md','bundles/sample_002.md'])
+        (self.base/'summaries').mkdir();(self.base/'insights').mkdir()
+        for sid in ('sample_001','sample_002'):
+            _,digest=a.bundle_body(self.base,next(x for x in data['sources'] if x['source_id']==sid))
+            (self.base/'summaries'/f'{sid}.md').write_text('<!-- bundle-sha256: '+digest+' -->\n内容 [source:'+sid+'] 第 1 段。',encoding='utf-8')
+        for name in a.OUTPUTS:
+            (self.base/'insights'/name).write_text('测试 [source:sample_001] 第 1 段。',encoding='utf-8')
+        code,out=self.run_output('validate')
+        self.assertEqual(code,0)
+        self.assertIn('sources with text=2/3',out)
+        self.assertEqual(self.run_command('validate','--strict'),2)
+        self.assertEqual(self.run_command('split','--strict'),2)
+
+    def test_locator_inside_brackets_explains_format(self):
+        self.prepare()
+        (self.base/'insights/01_concepts.md').write_text('坏 [source:sample_001 第1段]',encoding='utf-8')
+        code,out=self.run_output('validate')
+        self.assertEqual(code,2)
+        self.assertIn('[source:ID] 第2段',out)
+
+    def test_non_utf8_raw_names_file(self):
+        (self.base/'raw/sample_001.txt').write_bytes('中文测试'.encode('gbk'))
+        with self.assertRaisesRegex(ValueError,'sample_001.txt'):
+            self.run_command('bundle')
+
+    def test_null_metadata_fields_are_empty(self):
+        data=a.load(self.base)
+        data['sources'][0].update(title=None,url=None,published_at=None,duration_seconds=None)
+        self.save(data)
+        self.assertEqual(self.run_command('bundle'),0)
+
+    def test_reserved_name_in_text_path_fails(self):
+        data=a.load(self.base)
+        for path in ('raw/CON.txt','raw/nul','raw/x.'):
+            with self.subTest(path=path):
+                data['sources'][0]['text_path']=path;self.save(data)
+                with self.assertRaises(ValueError):a.load(self.base)
+
+    def test_init_builds_manifest_and_never_overwrites(self):
+        fresh=Path(self.temp.name)/'新归档';(fresh/'raw').mkdir(parents=True)
+        (fresh/'raw/第一篇.txt').write_text('甲',encoding='utf-8')
+        (fresh/'raw/talk-02.md').write_text('乙',encoding='utf-8')
+        (fresh/'raw/._junk.txt').write_text('x',encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(a.main(['init',str(fresh)]),0)
+        data=a.load(fresh)
+        self.assertEqual(data['scope']['status'],'unknown')
+        self.assertEqual({s['text_path'] for s in data['sources']},{'raw/第一篇.txt','raw/talk-02.md'})
+        self.assertIn('talk-02',{s['source_id'] for s in data['sources']})
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(a.main(['bundle',str(fresh)]),0)
+        with self.assertRaises(ValueError):a.main(['init',str(fresh)])
 
     def test_scope_unknown_remains_unknown_even_if_structure_passes(self):
         self.prepare()
@@ -187,6 +257,44 @@ class ArchiveTests(unittest.TestCase):
         before={p.relative_to(self.base):p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
         self.run_command('bundle');self.run_command('split');self.run_command('shard');self.run_command('index')
         for path,data in before.items():self.assertEqual((self.base/path).read_bytes(),data)
+
+
+    def test_init_generated_ids_do_not_collide_or_skip_underscore_files(self):
+        fresh=Path(self.temp.name)/'init collisions';(fresh/'raw').mkdir(parents=True)
+        for name in ('src_002.txt', '中文.txt', '_notes.md'):
+            (fresh/'raw'/name).write_text('原文',encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(a.main(['init',str(fresh)]),0)
+        data=a.load(fresh)
+        self.assertEqual(len(data['sources']),3)
+        self.assertEqual(len({x['source_id'].casefold() for x in data['sources']}),3)
+
+    def test_init_invalid_path_does_not_leave_unusable_manifest(self):
+        fresh=Path(self.temp.name)/'init failure';(fresh/'raw').mkdir(parents=True)
+        (fresh/'raw/x.txt').write_text('原文',encoding='utf-8')
+        from unittest import mock
+        with mock.patch.object(a,'portable_name',side_effect=lambda part: part != 'x.txt'):
+            with self.assertRaises(ValueError):a.main(['init',str(fresh)])
+        self.assertFalse((fresh/'sources.json').exists())
+
+    def test_all_windows_invalid_characters_rejected(self):
+        for char in '<>"|?*':
+            with self.subTest(char=char):
+                with self.assertRaises(ValueError):a.within(self.base,'raw/a'+char+'b.txt')
+
+    def test_strict_requires_confirmed_scope_and_no_partial_sources(self):
+        self.prepare()
+        data=a.load(self.base);data['scope']['status']='unknown';self.save(data)
+        self.assertEqual(self.run_command('validate'),0)
+        self.assertEqual(self.run_command('validate','--strict'),2)
+        self.assertEqual(self.run_command('split','--strict'),2)
+        self.assertFalse((self.base/'groups.json').exists())
+
+    def test_coverage_counts_actual_readable_files(self):
+        (self.base/'raw/sample_002.txt').unlink()
+        code,out=self.run_output('bundle')
+        self.assertEqual(code,2)
+        self.assertIn('sources with text=2/3',out)
 
 
 if __name__=='__main__':unittest.main()

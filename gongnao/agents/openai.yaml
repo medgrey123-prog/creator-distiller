@@ -1,0 +1,4 @@
+interface:
+  display_name: "共脑V1.0"
+  short_description: "完整提炼人物知识，按需生成思考型、表达型 Skill 与持续服务助手包"
+  default_prompt: "使用 $gongnao，先确认材料对象与所需能力，可多选思考型、表达型和持续服务者；保留完整细粒度知识底库，再生成所选能力包并记录实际试运行状态。"

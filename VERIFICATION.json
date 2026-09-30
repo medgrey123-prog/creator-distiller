@@ -1,0 +1,58 @@
+{
+  "display_name": "共脑V1.0",
+  "skill_name": "gongnao",
+  "version": "1.0.0",
+  "revision": "public-release-audit",
+  "date": "2026-09-30",
+  "status": "release_validation_snapshot",
+  "local_tool_tests": {
+    "passed": 38,
+    "command": "python3 -m unittest discover -s tests -v",
+    "python": "3.9.6",
+    "host": "macOS",
+    "archive_script_and_tests_unchanged": false,
+    "note": "Original 28 tests preserved; 10 regression tests added for publication fixes."
+  },
+  "skill_format": "PASS",
+  "legacy_names_absent": "display_name_and_skill_identifier_verified",
+  "local_links_and_anchors": "PASS",
+  "local_link_count_before_final_report": 89,
+  "markdown_fences_and_json": "PASS",
+  "relocated_sample": {
+    "bundle": "PASS",
+    "split": "PASS",
+    "validate_bundles": "PASS",
+    "scope": "synthetic sample; local current host only"
+  },
+  "behavior_evaluations": {
+    "cases": 24,
+    "status": "prepared_not_executed"
+  },
+  "generated_capability_end_to_end": "not_run",
+  "service_cross_session_resume": "not_run",
+  "windows_linux_runtime": "reported_by_remote_ci_not_local_host",
+  "remote_ci": {
+    "status": "see_per_commit_actions",
+    "url": "https://github.com/medgrey123-prog/creator-distiller/actions/workflows/test.yml",
+    "matrix": {
+      "os": [
+        "ubuntu-latest",
+        "windows-latest",
+        "macos-latest"
+      ],
+      "python": [
+        "3.9",
+        "3.13"
+      ]
+    }
+  },
+  "global_install": "not_performed",
+  "installer_temp_home": {
+    "install": "PASS",
+    "idempotent_rerun": "PASS",
+    "installed_copy_archive_chain": "PASS",
+    "scope": "simulated HOME on macOS; real agent loading not checked"
+  },
+  "example_package": "sample authored previously; corrected in final review; independent trial not run",
+  "historical_real_excerpt": "kept as historical output; source attribution and statistics not revalidated"
+}
